@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 房贷计算器 v1.1</title>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8467845065572857"
+       crossorigin="anonymous"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn .6s ease; }
+    #yearlyChartWrap { position: relative; height: 320px; overflow: hidden; }
+    #yearlyChart { position: absolute; inset: 0; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800">
+  <div class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <h1 class="text-2xl md:text-3xl font-bold">AI 房贷计算器 v1.1</h1>
+      <p class="text-sm md:text-base text-indigo-100 mt-2">支持商业贷 / 公积金 / 组合贷，提前还款模拟，月度与年度明细，AI 建议</p>
+    </div>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 fade-in">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <section class="lg:col-span-5 space-y-4">
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <h2 class="font-semibold mb-3">城市与利率</h2>
+          <input id="citySearch" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="搜索城市" />
+          <div id="cityTags" class="mt-3 flex flex-wrap gap-2 max-h-36 overflow-auto"></div>
+          <div class="grid grid-cols-2 gap-3 mt-3">
+            <label class="text-sm">LPR(%)
+              <input id="lprRate" type="number" step="0.01" class="mt-1 w-full border rounded-lg px-3 py-2" />
+            </label>
+            <label class="text-sm">加点(BP)
+              <input id="bpValue" type="number" step="1" class="mt-1 w-full border rounded-lg px-3 py-2" />
+            </label>
+          </div>
+          <p id="actualRateText" class="text-sm mt-2 text-purple-700"></p>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 shadow space-y-3">
+          <h2 class="font-semibold">贷款参数</h2>
+          <div class="flex gap-2 flex-wrap" id="loanTypeButtons"></div>
+          <div id="loanFields" class="space-y-3"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="text-sm">贷款年限（5-30）
+              <input id="years" type="range" min="5" max="30" value="30" class="w-full mt-1" />
+              <span id="yearsText" class="text-xs text-slate-500">30 年</span>
+            </label>
+            <label class="text-sm">还款方式
+              <select id="repaymentMethod" class="mt-1 w-full border rounded-lg px-3 py-2">
+                <option value="equalPayment">等额本息</option>
+                <option value="equalPrincipal">等额本金</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 shadow space-y-3">
+          <h2 class="font-semibold">提前还款计划</h2>
+          <label class="flex items-center gap-2 text-sm">
+            <input id="enableExtra" type="checkbox" class="h-4 w-4" />
+            启用提前还款
+          </label>
+          <div id="extraFields" class="grid grid-cols-2 gap-3 opacity-50 pointer-events-none">
+            <label class="text-sm">每年额外还款（万元）
+              <input id="extraPerYear" type="number" value="10" min="0" step="1" class="mt-1 w-full border rounded-lg px-3 py-2" />
+            </label>
+            <label class="text-sm">起始年份（第几年）
+              <input id="extraStartYear" type="number" value="3" min="1" max="30" step="1" class="mt-1 w-full border rounded-lg px-3 py-2" />
+            </label>
+            <label class="text-sm col-span-2">策略
+              <select id="extraMode" class="mt-1 w-full border rounded-lg px-3 py-2">
+                <option value="reduceTerm">减少还款期限（推荐）</option>
+                <option value="reducePayment">减少月供金额</option>
+              </select>
+            </label>
+          </div>
+          <button id="calcBtn" class="w-full bg-purple-600 hover:bg-purple-700 text-white rounded-xl py-2 font-medium">开始计算</button>
+          <div class="mt-2 border-t pt-3">
+            <p class="text-xs text-slate-400 mb-1">广告</p>
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="ca-pub-8467845065572857"
+                 data-ad-slot="1111111111"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+          </div>
+        </div>
+      </section>
+
+      <section class="lg:col-span-7 space-y-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="summaryCards"></div>
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <h3 class="font-semibold mb-2">年度还款结构</h3>
+          <div id="yearlyChartWrap">
+            <canvas id="yearlyChart"></canvas>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <h3 class="font-semibold mb-2">月度还款明细</h3>
+          <div class="max-h-[420px] overflow-auto border rounded-xl">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-100 sticky top-0">
+                <tr>
+                  <th class="p-2 text-left">月份</th><th class="p-2 text-right">月供</th><th class="p-2 text-right">本金</th>
+                  <th class="p-2 text-right">利息</th><th class="p-2 text-right">额外还款</th><th class="p-2 text-right">剩余本金</th>
+                </tr>
+              </thead>
+              <tbody id="monthlyBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <h3 class="font-semibold mb-2">年度还款汇总</h3>
+          <div class="overflow-auto border rounded-xl">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-100">
+                <tr>
+                  <th class="p-2 text-left">年份</th><th class="p-2 text-right">当年还款</th><th class="p-2 text-right">当年本金</th>
+                  <th class="p-2 text-right">当年利息</th><th class="p-2 text-right">额外还款</th><th class="p-2 text-right">剩余本金</th>
+                </tr>
+              </thead>
+              <tbody id="yearlyBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <h3 class="font-semibold mb-2">AI 智能建议</h3>
+          <div id="aiAdvice" class="text-sm leading-6 text-slate-700"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const CITY_DATA = [
+      ["北京", 3.6, -45], ["上海", 3.6, -40], ["广州", 3.6, -50], ["深圳", 3.6, -35], ["天津", 3.6, -50],
+      ["重庆", 3.6, -55], ["成都", 3.6, -60], ["杭州", 3.6, -50], ["南京", 3.6, -50], ["武汉", 3.6, -55],
+      ["西安", 3.6, -55], ["苏州", 3.6, -48], ["郑州", 3.6, -58], ["长沙", 3.6, -58], ["青岛", 3.6, -52],
+      ["宁波", 3.6, -50], ["无锡", 3.6, -50], ["佛山", 3.6, -55], ["东莞", 3.6, -55], ["合肥", 3.6, -58],
+      ["福州", 3.6, -55], ["厦门", 3.6, -50], ["济南", 3.6, -55], ["沈阳", 3.6, -60], ["大连", 3.6, -60],
+      ["哈尔滨", 3.6, -62], ["长春", 3.6, -62], ["南昌", 3.6, -58], ["昆明", 3.6, -60], ["贵阳", 3.6, -60],
+      ["南宁", 3.6, -60], ["海口", 3.6, -55], ["石家庄", 3.6, -60], ["太原", 3.6, -62], ["呼和浩特", 3.6, -62],
+      ["兰州", 3.6, -63], ["银川", 3.6, -63], ["西宁", 3.6, -63], ["乌鲁木齐", 3.6, -63], ["拉萨", 3.6, -60],
+      ["泉州", 3.6, -56], ["温州", 3.6, -52], ["常州", 3.6, -52], ["南通", 3.6, -52], ["嘉兴", 3.6, -52],
+      ["绍兴", 3.6, -52], ["金华", 3.6, -55], ["珠海", 3.6, -52], ["中山", 3.6, -55], ["惠州", 3.6, -55],
+      ["洛阳", 3.6, -60], ["烟台", 3.6, -55], ["潍坊", 3.6, -58], ["徐州", 3.6, -55], ["淄博", 3.6, -58]
+    ].map(([name, lpr, bp]) => ({ name, lpr, bp }));
+
+    const state = {
+      loanType: "commercial",
+      chart: null,
+      selectedCity: "北京"
+    };
+
+    const els = {
+      citySearch: document.getElementById("citySearch"),
+      cityTags: document.getElementById("cityTags"),
+      lprRate: document.getElementById("lprRate"),
+      bpValue: document.getElementById("bpValue"),
+      actualRateText: document.getElementById("actualRateText"),
+      loanTypeButtons: document.getElementById("loanTypeButtons"),
+      loanFields: document.getElementById("loanFields"),
+      years: document.getElementById("years"),
+      yearsText: document.getElementById("yearsText"),
+      repaymentMethod: document.getElementById("repaymentMethod"),
+      enableExtra: document.getElementById("enableExtra"),
+      extraFields: document.getElementById("extraFields"),
+      extraPerYear: document.getElementById("extraPerYear"),
+      extraStartYear: document.getElementById("extraStartYear"),
+      extraMode: document.getElementById("extraMode"),
+      calcBtn: document.getElementById("calcBtn"),
+      summaryCards: document.getElementById("summaryCards"),
+      monthlyBody: document.getElementById("monthlyBody"),
+      yearlyBody: document.getElementById("yearlyBody"),
+      aiAdvice: document.getElementById("aiAdvice")
+    };
+
+    function toYuan(v) { return Math.round(v); }
+    function fmtYuan(v) { return toYuan(v).toLocaleString("zh-CN") + " 元"; }
+    function fmtWan(v) { return (v / 10000).toFixed(1) + " 万"; }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    function initLoanTypeButtons() {
+      const types = [
+        ["commercial", "商业贷款", "bg-blue-50 text-blue-800"],
+        ["fund", "公积金贷款", "bg-green-50 text-green-800"],
+        ["mixed", "组合贷款", "bg-purple-50 text-purple-800"]
+      ];
+      els.loanTypeButtons.innerHTML = types.map(([key, label, style]) =>
+        `<button data-type="${key}" class="px-3 py-1.5 rounded-lg border ${style}">${label}</button>`
+      ).join("");
+      els.loanTypeButtons.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-type]");
+        if (!btn) return;
+        state.loanType = btn.dataset.type;
+        renderLoanFields(true);
+        highlightLoanType();
+      });
+    }
+
+    function highlightLoanType() {
+      els.loanTypeButtons.querySelectorAll("button").forEach((b) => {
+        const active = b.dataset.type === state.loanType;
+        b.classList.toggle("ring-2", active);
+        b.classList.toggle("ring-purple-400", active);
+      });
+    }
+
+    function renderLoanFields(resetDefaults = false) {
+      const defaults = {
+        commercialAmount: 100,
+        fundAmount: 100,
+        mixedCommercialAmount: 70,
+        mixedFundAmount: 30,
+        commercialRate: calcActualCommercialRate(),
+        fundRate: 2.85
+      };
+      if (state.loanType === "commercial") {
+        els.loanFields.innerHTML = `
+          <label class="text-sm block">商业贷款金额（万元）
+            <input id="commercialAmount" type="number" min="0" step="1" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.commercialAmount}" />
+          </label>
+          <label class="text-sm block">商业贷款利率（%）
+            <input id="commercialRate" type="number" min="0" step="0.01" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.commercialRate.toFixed(2)}" />
+          </label>
+        `;
+      } else if (state.loanType === "fund") {
+        els.loanFields.innerHTML = `
+          <label class="text-sm block">公积金贷款金额（万元）
+            <input id="fundAmount" type="number" min="0" step="1" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.fundAmount}" />
+          </label>
+          <label class="text-sm block">公积金贷款利率（%）
+            <input id="fundRate" type="number" min="0" step="0.01" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.fundRate.toFixed(3)}" />
+          </label>
+          <p class="text-xs text-slate-500">首套 2.85%，二套 3.325%</p>
+        `;
+      } else {
+        els.loanFields.innerHTML = `
+          <div class="grid grid-cols-2 gap-3">
+            <label class="text-sm block">商贷金额（万元）
+              <input id="mixedCommercialAmount" type="number" min="0" step="1" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.mixedCommercialAmount}" />
+            </label>
+            <label class="text-sm block">公积金额（万元）
+              <input id="mixedFundAmount" type="number" min="0" step="1" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.mixedFundAmount}" />
+            </label>
+            <label class="text-sm block">商贷利率（%）
+              <input id="commercialRate" type="number" min="0" step="0.01" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.commercialRate.toFixed(2)}" />
+            </label>
+            <label class="text-sm block">公积金利率（%）
+              <input id="fundRate" type="number" min="0" step="0.01" class="mt-1 w-full border rounded-lg px-3 py-2" value="${defaults.fundRate.toFixed(3)}" />
+            </label>
+          </div>
+        `;
+      }
+      if (!resetDefaults) return;
+    }
+
+    function calcActualCommercialRate() {
+      const lpr = parseFloat(els.lprRate.value || "0");
+      const bp = parseFloat(els.bpValue.value || "0");
+      return lpr + bp / 100;
+    }
+
+    function renderCities(keyword = "") {
+      const list = CITY_DATA.filter((c) => c.name.includes(keyword.trim()));
+      els.cityTags.innerHTML = list.map((c) => {
+        const active = c.name === state.selectedCity;
+        const cls = active ? "bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-transparent" : "bg-white text-slate-700 border-slate-300";
+        return `<button data-city="${c.name}" class="px-2 py-1 border rounded-full text-xs ${cls}">${c.name}</button>`;
+      }).join("");
+      els.cityTags.querySelectorAll("button").forEach((btn) => btn.onclick = () => selectCity(btn.dataset.city));
+      if (!list.length) {
+        els.cityTags.innerHTML = `<span class="text-xs text-amber-600">未匹配城市，请手动输入 LPR 和 BP</span>`;
+      }
+    }
+
+    function selectCity(cityName) {
+      const city = CITY_DATA.find((c) => c.name === cityName);
+      if (!city) return;
+      state.selectedCity = city.name;
+      els.lprRate.value = city.lpr.toFixed(2);
+      els.bpValue.value = city.bp.toString();
+      refreshActualRate();
+      renderCities(els.citySearch.value);
+      const rateInput = document.getElementById("commercialRate");
+      if (rateInput) rateInput.value = calcActualCommercialRate().toFixed(2);
+    }
+
+    function refreshActualRate() {
+      const realRate = calcActualCommercialRate();
+      els.actualRateText.textContent = `当前商业贷款实际利率：${realRate.toFixed(2)}%（LPR + BP/100）`;
+    }
+
+    function getInput() {
+      const years = parseInt(els.years.value, 10);
+      const months = years * 12;
+      const method = els.repaymentMethod.value;
+      const extraEnabled = els.enableExtra.checked;
+      const extraConfig = {
+        enabled: extraEnabled,
+        amountPerYear: Math.max(0, parseFloat(els.extraPerYear.value || "0")) * 10000,
+        extraStartYear: clamp(parseInt(els.extraStartYear.value || "1", 10), 1, 30),
+        mode: els.extraMode.value
+      };
+      const base = { years, months, method, extraConfig, loanType: state.loanType };
+      if (state.loanType === "commercial") {
+        return {
+          ...base,
+          commercialAmount: Math.max(0, parseFloat(document.getElementById("commercialAmount").value || "0")) * 10000,
+          commercialRate: Math.max(0, parseFloat(document.getElementById("commercialRate").value || "0")) / 100
+        };
+      }
+      if (state.loanType === "fund") {
+        return {
+          ...base,
+          fundAmount: Math.max(0, parseFloat(document.getElementById("fundAmount").value || "0")) * 10000,
+          fundRate: Math.max(0, parseFloat(document.getElementById("fundRate").value || "0")) / 100
+        };
+      }
+      return {
+        ...base,
+        commercialAmount: Math.max(0, parseFloat(document.getElementById("mixedCommercialAmount").value || "0")) * 10000,
+        fundAmount: Math.max(0, parseFloat(document.getElementById("mixedFundAmount").value || "0")) * 10000,
+        commercialRate: Math.max(0, parseFloat(document.getElementById("commercialRate").value || "0")) / 100,
+        fundRate: Math.max(0, parseFloat(document.getElementById("fundRate").value || "0")) / 100
+      };
+    }
+
+    function createComponent(principal, annualRate, months, method) {
+      const r = annualRate / 12;
+      const annuityPayment = r === 0 ? principal / months : principal * r * ((1 + r) ** months) / (((1 + r) ** months) - 1);
+      return {
+        balance: principal,
+        r,
+        months,
+        method,
+        originMonths: months,
+        fixedPrincipal: months > 0 ? principal / months : 0,
+        annuityPayment: annuityPayment || 0
+      };
+    }
+
+    function oneMonth(component) {
+      if (!component || component.balance <= 0 || component.months <= 0) {
+        return { payment: 0, principal: 0, interest: 0 };
+      }
+      const interest = component.balance * component.r;
+      let principal;
+      let payment;
+      if (component.method === "equalPayment") {
+        payment = component.annuityPayment;
+        principal = payment - interest;
+      } else {
+        principal = component.fixedPrincipal;
+        payment = principal + interest;
+      }
+      principal = Math.min(principal, component.balance);
+      payment = principal + interest;
+      component.balance -= principal;
+      component.months -= 1;
+      return { payment, principal, interest };
+    }
+
+    function applyExtra(component, extra, mode) {
+      if (!component || component.balance <= 0 || extra <= 0) return 0;
+      const used = Math.min(component.balance, extra);
+      component.balance -= used;
+      if (mode === "reducePayment" && component.balance > 0 && component.months > 0) {
+        if (component.method === "equalPayment") {
+          const r = component.r;
+          component.annuityPayment = r === 0 ? component.balance / component.months : component.balance * r * ((1 + r) ** component.months) / (((1 + r) ** component.months) - 1);
+        } else {
+          component.fixedPrincipal = component.balance / component.months;
+        }
+      }
+      if (mode === "reduceTerm" && component.balance <= 1) {
+        component.balance = 0;
+        component.months = 0;
+      }
+      return used;
+    }
+
+    function simulate(input) {
+      const monthsMax = input.months;
+      let c = null;
+      let f = null;
+      if (input.loanType === "commercial") c = createComponent(input.commercialAmount, input.commercialRate, monthsMax, input.method);
+      if (input.loanType === "fund") f = createComponent(input.fundAmount, input.fundRate, monthsMax, input.method);
+      if (input.loanType === "mixed") {
+        c = createComponent(input.commercialAmount, input.commercialRate, monthsMax, input.method);
+        f = createComponent(input.fundAmount, input.fundRate, monthsMax, input.method);
+      }
+
+      const monthly = [];
+      for (let m = 1; m <= monthsMax; m++) {
+        const cm = oneMonth(c);
+        const fm = oneMonth(f);
+        let extra = 0;
+        const yearNum = Math.ceil(m / 12);
+        const isYearEnd = m % 12 === 0;
+        if (input.extraConfig.enabled && isYearEnd && yearNum >= input.extraConfig.extraStartYear) {
+          let remainExtra = input.extraConfig.amountPerYear;
+          remainExtra -= applyExtra(c, remainExtra, input.extraConfig.mode);
+          remainExtra -= applyExtra(f, remainExtra, input.extraConfig.mode);
+          extra = input.extraConfig.amountPerYear - remainExtra;
+        }
+        const remain = (c?.balance || 0) + (f?.balance || 0);
+        monthly.push({
+          month: m,
+          year: Math.ceil(m / 12),
+          payment: cm.payment + fm.payment + extra,
+          principal: cm.principal + fm.principal + extra,
+          interest: cm.interest + fm.interest,
+          extra,
+          remainingPrincipal: Math.max(0, remain)
+        });
+        if (remain <= 1) break;
+      }
+      return monthly;
+    }
+
+    function toYearly(monthly) {
+      const map = new Map();
+      for (const row of monthly) {
+        const y = row.year;
+        if (!map.has(y)) map.set(y, { year: y, payment: 0, principal: 0, interest: 0, extra: 0, remainingPrincipal: 0 });
+        const cur = map.get(y);
+        cur.payment += row.payment;
+        cur.principal += row.principal;
+        cur.interest += row.interest;
+        cur.extra += row.extra;
+        cur.remainingPrincipal = row.remainingPrincipal;
+      }
+      return [...map.values()];
+    }
+
+    function renderSummary(monthly, input) {
+      const totalPay = monthly.reduce((s, r) => s + r.payment, 0);
+      const totalInterest = monthly.reduce((s, r) => s + r.interest, 0);
+      const firstPayment = monthly[0]?.payment || 0;
+      const yearsActual = (monthly.length / 12).toFixed(2);
+      const cards = [
+        ["首月月供", fmtYuan(firstPayment)],
+        ["总利息", fmtWan(totalInterest)],
+        ["还款总额", fmtWan(totalPay)],
+        ["实际年限", `${yearsActual} 年`]
+      ];
+      els.summaryCards.innerHTML = cards.map(([k, v]) => `
+        <div class="bg-white rounded-2xl p-3 shadow hover:-translate-y-0.5 transition">
+          <div class="text-xs text-slate-500">${k}</div>
+          <div class="text-base md:text-lg font-semibold mt-1">${v}</div>
+        </div>
+      `).join("");
+      renderAiAdvice(input, totalPay, totalInterest, yearsActual);
+    }
+
+    function renderMonthly(monthly) {
+      els.monthlyBody.innerHTML = monthly.map((r, i) => `
+        <tr class="${i % 2 ? "bg-slate-50" : "bg-white"} hover:bg-indigo-50">
+          <td class="p-2">${r.year}年${((r.month - 1) % 12) + 1}月</td>
+          <td class="p-2 text-right">${fmtYuan(r.payment)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.principal)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.interest)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.extra)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.remainingPrincipal)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderYearly(yearly) {
+      els.yearlyBody.innerHTML = yearly.map((r, i) => `
+        <tr class="${i % 2 ? "bg-slate-50" : "bg-white"} hover:bg-indigo-50">
+          <td class="p-2">${r.year}</td>
+          <td class="p-2 text-right">${fmtYuan(r.payment)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.principal)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.interest)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.extra)}</td>
+          <td class="p-2 text-right">${fmtYuan(r.remainingPrincipal)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderChart(yearly) {
+      const labels = yearly.map((x) => `第${x.year}年`);
+      const principal = yearly.map((x) => toYuan(x.principal - x.extra));
+      const interest = yearly.map((x) => toYuan(x.interest));
+      const extra = yearly.map((x) => toYuan(x.extra));
+      if (state.chart) state.chart.destroy();
+      state.chart = new Chart(document.getElementById("yearlyChart"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            { label: "本金", data: principal, backgroundColor: "#60a5fa" },
+            { label: "利息", data: interest, backgroundColor: "#f59e0b" },
+            { label: "额外还款", data: extra, backgroundColor: "#34d399" }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 2,
+          animation: false,
+          scales: { x: { stacked: true }, y: { stacked: true } }
+        }
+      });
+    }
+
+    function renderAiAdvice(input, totalPay, totalInterest, yearsActual) {
+      const ratio = totalPay === 0 ? 0 : Math.round(totalInterest / totalPay * 100);
+      const originYears = input.years;
+      const savedYears = Math.max(0, originYears - parseFloat(yearsActual)).toFixed(2);
+      const lines = [
+        `当前贷款类型：${input.loanType === "commercial" ? "商业贷款" : input.loanType === "fund" ? "公积金贷款" : "组合贷款"}。`,
+        `利息占比约 ${ratio}% ，总利息 ${fmtWan(totalInterest)}，实际还款期 ${yearsActual} 年。`,
+        input.extraConfig.enabled ? `提前还款后较原计划节省约 ${savedYears} 年，策略建议优先“减少还款期限”。` : "未启用提前还款，若现金流允许可考虑年末额外还款以降低总利息。",
+        input.method === "equalPrincipal" ? "等额本金前期压力更高但总利息更低，适合前期现金流充足用户。" : "等额本息月供平稳，适合追求现金流稳定的家庭。",
+        input.loanType === "mixed" ? "组合贷款建议优先用足公积金额度，提前还款优先偿还商贷可提升节息效率。" : "若未来存在置换或提前结清计划，可关注利率变化窗口。"
+      ];
+      els.aiAdvice.innerHTML = "<ul class='list-disc pl-5 space-y-1'>" + lines.map((x) => `<li>${x}</li>`).join("") + "</ul>";
+    }
+
+    function run() {
+      const input = getInput();
+      const amountTotal = (input.commercialAmount || 0) + (input.fundAmount || 0);
+      if (amountTotal <= 0) {
+        alert("贷款金额不能为 0");
+        return;
+      }
+      const monthly = simulate(input);
+      const yearly = toYearly(monthly);
+      renderSummary(monthly, input);
+      renderMonthly(monthly);
+      renderYearly(yearly);
+      renderChart(yearly);
+    }
+
+    function initEvents() {
+      els.citySearch.addEventListener("input", () => renderCities(els.citySearch.value));
+      [els.lprRate, els.bpValue].forEach((el) => el.addEventListener("input", () => {
+        refreshActualRate();
+        const rateInput = document.getElementById("commercialRate");
+        if (rateInput && state.loanType !== "fund") rateInput.value = calcActualCommercialRate().toFixed(2);
+      }));
+      els.years.addEventListener("input", () => els.yearsText.textContent = `${els.years.value} 年`);
+      els.enableExtra.addEventListener("change", () => {
+        const on = els.enableExtra.checked;
+        els.extraFields.classList.toggle("opacity-50", !on);
+        els.extraFields.classList.toggle("pointer-events-none", !on);
+      });
+      els.calcBtn.addEventListener("click", run);
+    }
+
+    function boot() {
+      initLoanTypeButtons();
+      renderLoanFields(true);
+      highlightLoanType();
+      initEvents();
+      selectCity("北京");
+      els.yearsText.textContent = `${els.years.value} 年`;
+      run();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
